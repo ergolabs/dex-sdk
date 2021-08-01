@@ -21,6 +21,7 @@ import           Data.Either.Combinators          (maybeToRight)
 import           Dex.Utils
 import           PlutusTx.IsData
 import qualified PlutusTx
+import           Data.Either.Combinators
 import qualified Data.Map                         as Map
 import qualified Ledger.Typed.Scripts             as Scripts
 import           Plutus.Contract                  hiding (when)
@@ -32,41 +33,28 @@ import           Dex.Instances
 import           Wallet.Emulator.Wallet
 import           Wallet.Effects                   (WalletEffect(..))
 import           Wallet.API
-import Plutus.V1.Ledger.Address 
-import qualified PlutusTx.AssocMap                as MapValue
-import Plutus.V1.Ledger.Value
-import qualified PlutusTx
-import Dex.Contract.Models
-import PlutusTx.Data
-import Plutus.V1.Ledger.Scripts
-import Plutus.V1.Ledger.Credential
-import Plutus.V1.Ledger.TxId
-import PlutusTx.Builtins
-import Plutus.V1.Ledger.Crypto
 
+-- InterpreterService produce tx by interpreting Operation with some data with corresponding pool
 data InterpreterService = InterpreterService
-    { deposit :: (Operation SwapOpData) -> Pool -> Either MkTxError Tx
-    , redeem :: (Operation DepositOpData) -> Pool -> Either MkTxError Tx
-    , swap :: (Operation RedeemOpData) -> Pool -> Either MkTxError Tx
+    { swap :: (Operation SwapOpData) -> Pool -> Either ProcError Tx
+    , deposit :: (Operation DepositOpData) -> Pool -> Either ProcError Tx
+    , redeem :: (Operation RedeemOpData) -> Pool -> Either ProcError Tx
     }
 
 mkInterpreterService :: InterpreterService
-mkInterpreterService = InterpreterService deposit' redeem' swap'
+mkInterpreterService = InterpreterService swap' deposit' redeem'
 
---todo: lift MkTxError to dex error
-interpretOp' :: Operation a -> Pool -> Either MkTxError (Tx, TxOut)
+interpretOp' :: Operation a -> Pool -> Either ProcError (Tx, TxOut)
 interpretOp' op pool =
     do
         tx <- createTx' op pool
-        -- todo: use correct error
-        newPoolOutput <- maybeToRight TypedValidatorMissing (getNewPoolOut' tx)
+        newPoolOutput <- maybeToRight (OutputWithPoolGenerationFailed "OutputWithPoolGenerationFailed") (getNewPoolOut' tx)
         let result = Right (tx, fullTxOut2TxOut newPoolOutput)
         result
 
---todo: lift MkTxError to dex error. Set correct errors. Now wip
-createTx' :: (Operation a) -> Pool -> Either MkTxError Tx
+createTx' :: (Operation a) -> Pool -> Either ProcError Tx
 createTx' operation pool
-    | checkPool operation pool /= True = Left TypedValidatorMissing
+    | checkPool operation pool /= True = Left (IncorrectPool ("Incorrect pool" ++ (show pool)))
     | otherwise = let
         inputs = getInputs operation pool
         outputs = generateOutputs operation pool
@@ -86,62 +74,13 @@ createTx' operation pool
     )
 
 getNewPoolOut' :: Tx -> Maybe FullTxOut
-getNewPoolOut' tx = Just $ FullTxOut {
-    refId = TxId "21fe31dfa154a261626bf854046fd2271b7bed4b6abe45aa58877ef47f9721b9",
-    refIdx = 3,
-    txOutAddress = Address {
-        addressCredential = PubKeyCredential $ PubKeyHash "21fe31dfa154a261626bf854046fd2271b7bed4b6abe45aa58877ef47f9721b9",
-        addressStakingCredential = Nothing
-    },
-    txOutValue = Value MapValue.empty,
-    fullTxOutDatum = Datum ammDatumTestData
-}
+getNewPoolOut' tx = undefined
 
-deposit' :: Operation SwapOpData -> Pool -> Either MkTxError Tx
+swap' :: Operation SwapOpData -> Pool -> Either ProcError Tx
 deposit' = createTx'
 
-redeem' :: Operation DepositOpData -> Pool -> Either MkTxError Tx
+deposit' :: Operation DepositOpData -> Pool -> Either ProcError Tx
 redeem' = createTx'
 
-swap' :: Operation RedeemOpData -> Pool -> Either MkTxError Tx
+redeem' :: Operation RedeemOpData -> Pool -> Either ProcError Tx
 swap' = createTx'
-
-ergoDexPoolTest :: ErgoDexPool
-ergoDexPoolTest = 
-    ErgoDexPool {
-        feeNum = 10,
-        xCoin = AssetClass {
-            unAssetClass = (
-                CurrencySymbol {
-                    unCurrencySymbol = emptyByteString
-                }, 
-                TokenName {
-                    unTokenName = emptyByteString
-                }
-            )
-        } ,
-        yCoin = AssetClass {
-            unAssetClass = (
-                CurrencySymbol {
-                    unCurrencySymbol = emptyByteString
-                }, 
-                TokenName {
-                    unTokenName = emptyByteString
-                }
-            )
-        }  ,
-        lpCoin = AssetClass {
-            unAssetClass = (
-                CurrencySymbol {
-                    unCurrencySymbol = emptyByteString
-                }, 
-                TokenName {
-                    unTokenName = emptyByteString
-                }
-            )
-        } 
-    }
-
-ammDatumTestData :: Data
-ammDatumTestData = 
-    PlutusTx.toData ergoDexPoolTest
