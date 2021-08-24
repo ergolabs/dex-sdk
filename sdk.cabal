@@ -76,6 +76,7 @@ library
                      Dex.Models
                      Dex.Processor
                      Dex.Utils
+                     Dex.Instances
 
     build-depends: 
         plutus-ledger,
@@ -92,4 +93,6 @@ library
         aeson-gadt-th,
         some,
         dependent-sum-template,
-        containers
+        containers,
+        freer-simple,
+        plutus-core
